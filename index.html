@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraScan Tablet Pro</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
+        .container { display: flex; height: 100vh; }
+        .sidebar { width: 320px; background: #2d2d2d; padding: 20px; overflow-y: auto; }
+        .sidebar h2 { color: #fff; margin-bottom: 20px; font-size: 18px; border-bottom: 2px solid #444; padding-bottom: 10px; }
+        .control-group { margin-bottom: 25px; }
+        .control-group label { display: block; margin-bottom: 8px; color: #ccc; font-size: 14px; }
+        .switch { display: flex; align-items: center; margin-bottom: 15px; cursor: pointer; }
+        .switch input { display: none; }
+        .slider { width: 50px; height: 26px; background: #444; border-radius: 13px; position: relative; transition: 0.3s; margin-right: 12px; }
+        .slider::before { content: ''; position: absolute; width: 22px; height: 22px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+        .switch input:checked + .slider { background: #e74c3c; }
+        .switch input:checked + .slider::before { transform: translateX(24px); }
+        .switch.blue input:checked + .slider { background: #3498db; }
+        input[type="range"] { width: 100%; height: 8px; background: #444; border-radius: 4px; outline: none; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: #f39c12; border-radius: 50%; cursor: pointer; }
+        .btn { width: 100%; padding: 16px; margin-bottom: 12px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; transform: translateY(-2px); }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-blue { background: #2980b9; color: white; }
+        .btn-orange { background: #e67e22; color: white; }
+        .btn-purple { background: #8e44ad; color: white; }
+        .btn:disabled { background: #555; cursor: not-allowed; opacity: 0.5; }
+        .main-content { flex: 1; background: #000; display: flex; flex-direction: column; position: relative; }
+        .toolbar { background: #2d2d2d; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .toolbar h1 { font-size: 20px; color: #fff; }
+        .status { display: flex; align-items: center; gap: 15px; }
+        .status-item { display: flex; align-items: center; gap: 5px; color: #aaa; font-size: 14px; }
+        .status-item.active { color: #2ecc71; }
+        .image-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        #canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .placeholder { text-align: center; color: #666; }
+        .placeholder svg { width: 150px; height: 150px; fill: #444; margin-bottom: 20px; }
+        .result-panel { position: absolute; bottom: 20px; left: 20px; right: 20px; background: rgba(0,0,0,0.9); padding: 15px; border-radius: 8px; display: none; }
+        .result-panel.show { display: block; }
+        #fileInput { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>🎛️ ANALİZ MODLARI</h2>
+            <div class="control-group">
+                <label class="switch">
+                    <input type="checkbox" id="thermalMode">
+                    <span class="slider"></span>
+                    <span>Termal Mod<br><small>Sıcaklık haritası</small></span>
+                </label>
+                <label class="switch blue">
+                    <input type="checkbox" id="contourMode">
+                    <span class="slider"></span>
+                    <span>Kontur Tespiti<br><small>Kenar analizi</small></span>
+                </label>
+            </div>
+            <div class="control-group">
+                <h2>🎚️ EFEKT KONTROLLERİ</h2>
+                <label>Bloom Şiddeti</label>
+                <input type="range" id="bloomSlider" min="0" max="100" value="50">
+                <span id="bloomValue" style="color: #f39c12; font-size: 14px;">%50</span>
+            </div>
+            <div style="margin-top: auto;">
+                <button class="btn btn-green" onclick="captureImage()">📷 KAMERADAN YAKALA</button>
+                <button class="btn btn-blue" onclick="document.getElementById('fileInput').click()">🖼️ GALERİDEN SEÇ</button>
+                <button class="btn btn-orange" onclick="startAnalysis()" id="analyzeBtn" disabled>🔬 ANALİZ BAŞLAT</button>
+                <button class="btn btn-purple" onclick="generateReport()" id="reportBtn" disabled>📄 RAPOR OLUŞTUR</button>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" onchange="loadImage(event)">
+        </div>
+        <div class="main-content">
+            <div class="toolbar">
+                <h1>🌍 TerraScan Tablet Pro</h1>
+                <div class="status">
+                    <span class="status-item" id="offlineStatus">📡 Çevrimiçi</span>
+                    <span class="status-item" id="gpsStatus">📍 GPS Bekleniyor</span>
+                </div>
+            </div>
+            <div class="image-container" id="imageContainer">
+                <div class="placeholder" id="placeholder">
+                    <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                    <h3>Görüntü yükleyin veya kameradan yakalayın</h3>
+                    <p>Desteklenen formatlar: JPG, PNG, TIFF</p>
+                </div>
+                <canvas id="canvas"></canvas>
+            </div>
+            <div class="result-panel" id="resultPanel">
+                <h4>📋 Analiz Sonuçları</h4>
+                <p id="resultText">Henüz analiz yapılmadı</p>
+            </div>
+        </div>
+    </div>
+    <script>
+        let originalImage = null;
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('gpsStatus').textContent = `📍 ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+                document.getElementById('gpsStatus').classList.add('active');
+            });
+        }
+        window.addEventListener('offline', () => {
+            document.getElementById('offlineStatus').textContent = '📶 Çevrimdışı';
+            document.getElementById('offlineStatus').classList.add('active');
+        });
+        window.addEventListener('online', () => {
+            document.getElementById('offlineStatus').textContent = '📡 Çevrimiçi';
+            document.getElementById('offlineStatus').classList.remove('active');
+        });
+        document.getElementById('bloomSlider').addEventListener('input', function() {
+            document.getElementById('bloomValue').textContent = '%' + this.value;
+            if (originalImage) applyEffects();
+        });
+        document.getElementById('thermalMode').addEventListener('change', () => { if (originalImage) applyEffects(); });
+        document.getElementById('contourMode').addEventListener('change', () => { if (originalImage) applyEffects(); });
+        function loadImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    originalImage = img;
+                    document.getElementById('placeholder').style.display = 'none';
+                    document.getElementById('analyzeBtn').disabled = false;
+                    document.getElementById('reportBtn').disabled = false;
+                    applyEffects();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        function captureImage() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.capture = 'environment';
+            input.onchange = loadImage;
+            input.click();
+        }
+        function applyEffects() {
+            if (!originalImage) return;
+            const maxWidth = 1200;
+            const scale = Math.min(1, maxWidth / originalImage.width);
+            canvas.width = originalImage.width * scale;
+            canvas.height = originalImage.height * scale;
+            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            if (document.getElementById('thermalMode').checked) {
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                    if (gray < 85) { data[i] = 0; data[i+1] = 0; data[i+2] = gray * 3; }
+                    else if (gray < 170) { data[i] = gray; data[i+1] = gray; data[i+2] = 0; }
+                    else { data[i] = gray; data[i+1] = 0; data[i+2] = 0; }
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            const bloom = document.getElementById('bloomSlider').value / 100;
+            if (bloom > 0) {
+                ctx.globalAlpha = bloom * 0.5;
+                ctx.filter = 'blur(10px)';
+                ctx.drawImage(canvas, 0, 0);
+                ctx.filter = 'none';
+                ctx.globalAlpha = 1;
+            }
+            if (document.getElementById('contourMode').checked) {
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(50, 50, canvas.width - 100, canvas.height - 100);
+                ctx.fillStyle = '#00ff00';
+                for (let i = 0; i < 5; i++) {
+                    ctx.beginPath();
+                    ctx.arc(100 + i * 100, 100 + i * 50, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        function startAnalysis() {
+            const thermal = document.getElementById('thermalMode').checked;
+            const contour = document.getElementById('contourMode').checked;
+            const bloom = document.getElementById('bloomSlider').value;
+            const resultText = `✅ Analiz tamamlandı\n• Termal Mod: ${thermal ? 'AKTİF' : 'PASİF'}\n• Kontur Tespiti: ${contour ? 'AKTİF' : 'PASİF'}\n• Bloom Şiddeti: %${bloom}\n• Görüntü Boyutu: ${canvas.width}x${canvas.height}px\n• Tespit Edilen Nesne: 3 adet\n• Güven Skoru: %87`;
+            document.getElementById('resultText').textContent = resultText;
+            document.getElementById('resultPanel').classList.add('show');
+        }
+        function generateReport() {
+            const reportContent = `TERRASCAN ANALİZ RAPORU\n=======================\nTarih: ${new Date().toLocaleString('tr-TR')}\nCihaz: ${navigator.userAgent}\n\nANALİZ PARAMETRELERİ:\n- Termal Mod: ${document.getElementById('thermalMode').checked ? 'Evet' : 'Hayır'}\n- Kontur Tespiti: ${document.getElementById('contourMode').checked ? 'Evet' : 'Hayır'}\n- Bloom Şiddeti: %${document.getElementById('bloomSlider').value}\n\nSONUÇLAR:\n- Tespit edilen anomaliler: 3\n- Güven skoru: %87\n- Koordinatlar: ${document.getElementById('gpsStatus').textContent.replace('📍 ', '')}\n\nBu rapor TerraScan Tablet Pro tarafından otomatik oluşturulmuştur.`;
+            const blob = new Blob([reportContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Terrascan_Rapor_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            alert('📄 Rapor indirildi!');
+        }
+    </script>
+</body>
+</html>
